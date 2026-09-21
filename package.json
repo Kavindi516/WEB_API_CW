@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/Kavindi516/WEB_API_CW#readme",
   "dependencies": {
+    "dotenv": "^18.0.2",
     "mongoose": "^9.10.1"
   }
 }
