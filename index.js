@@ -18,6 +18,12 @@ app.use('/provinces', provincesRouter);
 const districtsRouter = require('./routes/districts');
 app.use('/districts', districtsRouter);
 
+const substationsRouter = require('./routes/substations');
+app.use('/substations', substationsRouter);
+
+const installationsRouter = require('./routes/installations');
+app.use('/installations', installationsRouter);
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
