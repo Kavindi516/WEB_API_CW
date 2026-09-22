@@ -15,6 +15,9 @@ app.get('/', (req, res) => {
 const provincesRouter = require('./routes/provinces');
 app.use('/provinces', provincesRouter);
 
+const districtsRouter = require('./routes/districts');
+app.use('/districts', districtsRouter);
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
