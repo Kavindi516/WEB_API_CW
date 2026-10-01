@@ -27,6 +27,9 @@ app.use('/installations', installationsRouter);
 const readingsRouter = require('./routes/readings');
 app.use('/installations/:id/readings', readingsRouter);
 
+const authRouter = require('./routes/auth');
+app.use('/auth', authRouter);
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

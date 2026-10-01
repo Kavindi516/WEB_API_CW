@@ -1,13 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const { District, GridSubstation } = require('../models');
+const userAuth = require('../middleware/userAuth');
 
-// GET /districts — list all districts, with their province's name attached
-router.get('/', async (req, res) => {
+// GET /districts — list districts, scoped to the logged-in user's jurisdiction
+router.get('/', userAuth, async (req, res) => {
   try {
-    const districts = await District.find()
-      .populate('province', 'name code') // swap the raw province _id for its name+code
+    let filter = {};
+
+    if (req.user.role === 'DISTRICT') {
+      filter = { _id: req.user.district };
+    } else if (req.user.role === 'PROVINCIAL') {
+      filter = { province: req.user.province };
+    }
+    // NATIONAL → {} → sees all
+
+    const districts = await District.find(filter)
+      .populate('province', 'name code')
       .sort({ name: 1 });
+
     res.json(districts);
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch districts' });
