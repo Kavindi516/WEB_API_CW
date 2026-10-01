@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true }); // mergeParams lets this router see :id from its parent
 const { SolarInstallation, GenerationReading } = require('../models');
+const deviceAuth = require('../middleware/deviceAuth');
 
 // GET /installations/:id/readings — paginated, filterable, sortable history
 router.get('/', async (req, res) => {
@@ -49,6 +50,34 @@ router.get('/', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch readings' });
+  }
+});
+
+// POST /installations/:id/readings — a device pushes one new reading
+router.post('/', deviceAuth, async (req, res) => {
+  try {
+    const { timestamp, powerKw, energyKwh, voltage } = req.body;
+
+    if (powerKw === undefined || energyKwh === undefined || voltage === undefined) {
+      return res.status(400).json({
+        error: { code: 'MISSING_FIELDS', message: 'powerKw, energyKwh and voltage are required' },
+      });
+    }
+
+    const reading = await GenerationReading.create({
+      installation: req.params.id,
+      timestamp: timestamp ? new Date(timestamp) : new Date(),
+      powerKw,
+      energyKwh,
+      voltage,
+    });
+
+    res
+      .status(201)
+      .location(`${req.baseUrl}/${reading._id}`) // tells the client where the new resource now lives
+      .json(reading);
+  } catch (err) {
+    res.status(500).json({ error: 'Could not save reading' });
   }
 });
 
