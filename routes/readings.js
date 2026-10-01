@@ -1,0 +1,55 @@
+const express = require('express');
+const router = express.Router({ mergeParams: true }); // mergeParams lets this router see :id from its parent
+const { SolarInstallation, GenerationReading } = require('../models');
+
+// GET /installations/:id/readings — paginated, filterable, sortable history
+router.get('/', async (req, res) => {
+  try {
+    const installation = await SolarInstallation.findById(req.params.id);
+    if (!installation) {
+      return res.status(404).json({ error: 'Installation not found' });
+    }
+
+    // ---- 1. build the filter ----
+    const filter = { installation: req.params.id };
+
+    if (req.query.from || req.query.to) {
+      filter.timestamp = {};
+      if (req.query.from) filter.timestamp.$gte = new Date(req.query.from); // $gte = greater than or equal
+      if (req.query.to) filter.timestamp.$lte = new Date(req.query.to);     // $lte = less than or equal
+    }
+
+    // ---- 2. sorting ----
+    const sortDir = req.query.order === 'asc' ? 1 : -1; // default newest-first
+    const sort = { timestamp: sortDir };
+
+    // ---- 3. pagination ----
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50)); // cap at 200 so nobody requests everything at once
+    const skip = (page - 1) * limit;
+
+    // ---- 4. run the query + get a total count, in parallel ----
+    const [readings, total] = await Promise.all([
+      GenerationReading.find(filter).sort(sort).skip(skip).limit(limit),
+      GenerationReading.countDocuments(filter),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    res.json({
+      data: readings,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        nextPage: page < totalPages ? `${req.baseUrl}?page=${page + 1}&limit=${limit}` : null,
+        prevPage: page > 1 ? `${req.baseUrl}?page=${page - 1}&limit=${limit}` : null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not fetch readings' });
+  }
+});
+
+module.exports = router;
