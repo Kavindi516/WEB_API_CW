@@ -68,4 +68,45 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// PUT /installations/:id — fully replace an installation's editable fields (idempotent)
+router.put('/:id', async (req, res) => {
+  try {
+    const { capacityKw, latitude, longitude, substation } = req.body;
+
+    if (capacityKw === undefined || latitude === undefined || longitude === undefined || !substation) {
+      return res.status(400).json({
+        error: { code: 'MISSING_FIELDS', message: 'capacityKw, latitude, longitude and substation are required' },
+      });
+    }
+
+    const updated = await SolarInstallation.findByIdAndUpdate(
+      req.params.id,
+      { capacityKw, latitude, longitude, substation }, // meterId and apiKeyHash are NOT editable here
+      { new: true, runValidators: true } // return the updated doc, and re-check schema rules
+    ).select('-apiKeyHash');
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Installation not found' });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: 'Could not update installation' });
+  }
+});
+
+// DELETE /installations/:id — remove an installation
+router.delete('/:id', async (req, res) => {
+  try {
+    const deleted = await SolarInstallation.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Installation not found' });
+    }
+    res.status(204).send(); // 204 = success, nothing to return
+  } catch (err) {
+    res.status(500).json({ error: 'Could not delete installation' });
+  }
+});
+
+
 module.exports = router;
