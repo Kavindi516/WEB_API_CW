@@ -1,9 +1,25 @@
-// builds a MongoDB filter based on the logged-in user's role + jurisdiction
-function scopeFilterForUser(user) {
-  if (user.role === 'NATIONAL') return {}; // no restriction — sees everything
-  if (user.role === 'PROVINCIAL') return { province: user.province };
-  if (user.role === 'DISTRICT') return { district: user.district };
-  return { _id: null }; // unknown role — matches nothing, safe default
+const { District, GridSubstation } = require('../models');
+
+async function installationScopeFilter(user) {
+  if (user.role === 'NATIONAL') {
+    return {};
+  }
+
+  if (user.role === 'DISTRICT') {
+    const substations = await GridSubstation.find({ district: user.district }).select('_id');
+    const substationIds = substations.map((s) => s._id);
+    return { substation: { $in: substationIds } }; // $in = "matches any of these"
+  }
+
+  if (user.role === 'PROVINCIAL') {
+    const districts = await District.find({ province: user.province }).select('_id');
+    const districtIds = districts.map((d) => d._id);
+    const substations = await GridSubstation.find({ district: { $in: districtIds } }).select('_id');
+    const substationIds = substations.map((s) => s._id);
+    return { substation: { $in: substationIds } };
+  }
+
+  return { _id: null }; // unknown role, matches nothing
 }
 
-module.exports = { scopeFilterForUser };
+module.exports = { installationScopeFilter };

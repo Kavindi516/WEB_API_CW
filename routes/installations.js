@@ -1,15 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const { SolarInstallation, GenerationReading } = require('../models');
+const userAuth = require('../middleware/userAuth');
+const { installationScopeFilter } = require('../middleware/scopeByJurisdiction');
 
-// GET /installations — list all installations, with their substation attached
-// deliberately NOT returning apiKeyHash — that field should never leave the server
-router.get('/', async (req, res) => {
+// GET /installations — scoped by the logged-in user's jurisdiction
+router.get('/', userAuth, async (req, res) => {
   try {
-    const installations = await SolarInstallation.find()
-      .select('-apiKeyHash') // exclude this field from the response
+    const filter = await installationScopeFilter(req.user);
+
+    const installations = await SolarInstallation.find(filter)
+      .select('-apiKeyHash')
       .populate('substation', 'name code')
       .sort({ meterId: 1 });
+
     res.json(installations);
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch installations' });
@@ -52,13 +56,12 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Installation not found' });
     }
 
-    // find just the single newest reading for this installation
     const latestReading = await GenerationReading.findOne({ installation: installation._id })
-      .sort({ timestamp: -1 }); // -1 = descending, so "first" = newest
+      .sort({ timestamp: -1 });
 
     res.json({
-      ...installation.toObject(), // spread the installation's own fields
-      latestReading: latestReading || null, // attach the extra related data
+      ...installation.toObject(),
+      latestReading: latestReading || null,
     });
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch installation' });
