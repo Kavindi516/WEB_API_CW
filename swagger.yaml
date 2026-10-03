@@ -1,0 +1,362 @@
+openapi: 3.0.3
+info:
+  title: SLSEA Solar Generation Data API
+  description: >
+    Real-time and historical solar generation data API for the Sri Lanka
+    Sustainable Energy Authority. Metering devices push readings as write
+    clients; SLSEA users read data scoped by jurisdiction.
+  version: 1.0.0
+servers:
+  - url: https://webapicw-production.up.railway.app
+    description: Production (Railway)
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: Hierarchy
+    description: Provinces, districts, substations
+  - name: Installations
+    description: Solar installation records (composite + CRUD)
+  - name: Readings
+    description: Generation readings (write path + analytical history)
+  - name: Auth
+    description: SLSEA user login
+
+paths:
+  /provinces:
+    get:
+      tags: [Hierarchy]
+      summary: List all provinces
+      responses:
+        '200':
+          description: Array of provinces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Province'
+
+  /provinces/{id}/districts:
+    get:
+      tags: [Hierarchy]
+      summary: List districts in a province (scoped collection)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Array of districts in this province
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/District'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /districts:
+    get:
+      tags: [Hierarchy]
+      summary: List districts (scoped to the logged-in user's jurisdiction)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Array of districts visible to this user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/District'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /districts/{id}/generation-summary:
+    get:
+      tags: [Hierarchy]
+      summary: Aggregated current power + today's energy across a district (processing resource)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: District generation summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DistrictSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /installations:
+    get:
+      tags: [Installations]
+      summary: List installations (scoped to the logged-in user's jurisdiction)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Array of installations visible to this user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Installation'
+
+  /installations/{id}:
+    get:
+      tags: [Installations]
+      summary: Get one installation with its latest reading (composite resource)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Installation with latestReading embedded
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Installations]
+      summary: Replace an installation's editable fields (idempotent)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capacityKw, latitude, longitude, substation]
+              properties:
+                capacityKw: { type: number }
+                latitude: { type: number }
+                longitude: { type: number }
+                substation: { type: string }
+      responses:
+        '200':
+          description: Updated installation
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Installations]
+      summary: Delete an installation
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '204':
+          description: Deleted successfully, no content
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /installations/{id}/last-reading:
+    get:
+      tags: [Readings]
+      summary: Most recent reading for an installation (derived/operational resource)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: The single most recent reading
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reading'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /installations/{id}/readings:
+    get:
+      tags: [Readings]
+      summary: Paginated, filterable, sortable reading history (analytical resource)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: from
+          in: query
+          description: ISO date — start of time window filter
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: ISO date — end of time window filter
+          schema: { type: string, format: date }
+        - name: order
+          in: query
+          schema: { type: string, enum: [asc, desc], default: desc }
+      responses:
+        '200':
+          description: Paginated readings with pagination metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Reading'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+    post:
+      tags: [Readings]
+      summary: Device pushes a new generation reading (write path, device-authenticated)
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [powerKw, energyKwh, voltage]
+              properties:
+                timestamp: { type: string, format: date-time }
+                powerKw: { type: number }
+                energyKwh: { type: number }
+                voltage: { type: number }
+      responses:
+        '201':
+          description: Reading created
+          headers:
+            Location:
+              description: URL of the newly created reading
+              schema: { type: string }
+        '400':
+          description: Missing required fields
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: API key does not belong to this installation
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: SLSEA user login — returns a JWT bearer token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+        '401':
+          description: Invalid credentials
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: SLSEA user token, obtained from /auth/login
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Device API key, issued at installation provisioning
+
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: MongoDB ObjectId
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Province:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        code: { type: string }
+
+    District:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        code: { type: string }
+        province: { type: object }
+
+    Installation:
+      type: object
+      properties:
+        _id: { type: string }
+        meterId: { type: string }
+        capacityKw: { type: number }
+        latitude: { type: number }
+        longitude: { type: number }
+        substation: { type: object }
+
+    Reading:
+      type: object
+      properties:
+        _id: { type: string }
+        installation: { type: string }
+        timestamp: { type: string, format: date-time }
+        powerKw: { type: number }
+        energyKwh: { type: number }
+        voltage: { type: number }
+
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+        nextPage: { type: string, nullable: true }
+        prevPage: { type: string, nullable: true }
+
+    DistrictSummary:
+      type: object
+      properties:
+        district: { type: string }
+        installationCount: { type: integer }
+        currentTotalPowerKw: { type: number }
+        todayTotalEnergyKwh: { type: number }
+        generatedAt: { type: string, format: date-time }
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            detail: { nullable: true }

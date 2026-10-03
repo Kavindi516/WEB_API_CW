@@ -33,6 +33,12 @@ app.use('/auth', authRouter);
 const districtSummaryRouter = require('./routes/districtSummary');
 app.use('/districts', districtSummaryRouter);
 
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yamljs');
+const swaggerDocument = YAML.load('./swagger.yaml');
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
 const { errorBody } = require('./utils/errors');
 
 // catches anything unexpected that falls through — must be registered LAST
