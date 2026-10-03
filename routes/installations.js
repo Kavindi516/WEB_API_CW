@@ -59,10 +59,21 @@ router.get('/:id', async (req, res) => {
     const latestReading = await GenerationReading.findOne({ installation: installation._id })
       .sort({ timestamp: -1 });
 
-    res.json({
+    const payload = {
       ...installation.toObject(),
       latestReading: latestReading || null,
-    });
+    };
+
+    const body = JSON.stringify(payload);
+    const etag = require('etag')(body); // generate a fingerprint of this exact response body
+
+    res.set('ETag', etag);
+
+    if (req.fresh) {
+      return res.status(304).end(); // client already has this exact version — send nothing
+    }
+
+    res.type('application/json').send(body);
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch installation' });
   }
