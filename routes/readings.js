@@ -2,13 +2,14 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // mergeParams lets this router see :id from its parent
 const { SolarInstallation, GenerationReading } = require('../models');
 const deviceAuth = require('../middleware/deviceAuth');
+const { errorBody } = require('../utils/errors');
 
 // GET /installations/:id/readings — paginated, filterable, sortable history
 router.get('/', async (req, res) => {
   try {
     const installation = await SolarInstallation.findById(req.params.id);
     if (!installation) {
-      return res.status(404).json({ error: 'Installation not found' });
+      return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
     }
 
     // ---- 1. build the filter ----
@@ -49,7 +50,7 @@ router.get('/', async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ error: 'Could not fetch readings' });
+    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch readings'));
   }
 });
 
@@ -59,9 +60,9 @@ router.post('/', deviceAuth, async (req, res) => {
     const { timestamp, powerKw, energyKwh, voltage } = req.body;
 
     if (powerKw === undefined || energyKwh === undefined || voltage === undefined) {
-      return res.status(400).json({
-        error: { code: 'MISSING_FIELDS', message: 'powerKw, energyKwh and voltage are required' },
-      });
+      return res.status(400).json(
+        errorBody('MISSING_FIELDS', 'powerKw, energyKwh and voltage are required')
+      );
     }
 
     const reading = await GenerationReading.create({
@@ -77,7 +78,7 @@ router.post('/', deviceAuth, async (req, res) => {
       .location(`${req.baseUrl}/${reading._id}`) // tells the client where the new resource now lives
       .json(reading);
   } catch (err) {
-    res.status(500).json({ error: 'Could not save reading' });
+    res.status(500).json(errorBody('SAVE_FAILED', 'Could not save reading'));
   }
 });
 

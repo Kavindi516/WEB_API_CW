@@ -30,6 +30,19 @@ app.use('/installations/:id/readings', readingsRouter);
 const authRouter = require('./routes/auth');
 app.use('/auth', authRouter);
 
+const { errorBody } = require('./utils/errors');
+
+// catches anything unexpected that falls through — must be registered LAST
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json(errorBody('INTERNAL_ERROR', 'Something went wrong on the server'));
+});
+
+// also handle requests to routes that don't exist at all
+app.use((req, res) => {
+  res.status(404).json(errorBody('NOT_FOUND', 'This route does not exist'));
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
