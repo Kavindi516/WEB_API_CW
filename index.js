@@ -30,6 +30,9 @@ app.use('/installations/:id/readings', readingsRouter);
 const authRouter = require('./routes/auth');
 app.use('/auth', authRouter);
 
+const districtSummaryRouter = require('./routes/districtSummary');
+app.use('/districts', districtSummaryRouter);
+
 const { errorBody } = require('./utils/errors');
 
 // catches anything unexpected that falls through — must be registered LAST
