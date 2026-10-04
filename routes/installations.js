@@ -74,6 +74,7 @@ router.get('/:id', async (req, res) => {
     const etag = require('etag')(body); // fingerprint of this exact response body
 
     res.set('ETag', etag);
+    res.set('Last-Modified', installation.updatedAt.toUTCString()); // used as If-Unmodified-Since on PUT
 
     // conditional GET: if the client already holds this exact version, send nothing
     const ifNoneMatch = req.headers['if-none-match'];
@@ -146,24 +147,40 @@ router.put('/:id', async (req, res) => {
     const { capacityKw, latitude, longitude, substation } = req.body;
 
     if (capacityKw === undefined || latitude === undefined || longitude === undefined || !substation) {
-      return res.status(400).json({
-        error: { code: 'MISSING_FIELDS', message: 'capacityKw, latitude, longitude and substation are required' },
-      });
+      return res.status(400).json(
+        errorBody('MISSING_FIELDS', 'capacityKw, latitude, longitude and substation are required')
+      );
+    }
+
+    const existing = await SolarInstallation.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
+    }
+
+    // optimistic concurrency: if the client sent If-Unmodified-Since, only proceed
+    // when the resource has NOT changed since they last fetched it.
+    const ifUnmodifiedSince = req.header('If-Unmodified-Since');
+    if (ifUnmodifiedSince) {
+      const since = new Date(ifUnmodifiedSince);
+      const lastModifiedSec = Math.floor(existing.updatedAt.getTime() / 1000); // Last-Modified is second-precision
+      const sinceSec = Math.floor(since.getTime() / 1000);
+      if (isNaN(since.getTime()) || lastModifiedSec > sinceSec) {
+        return res.status(412).json(
+          errorBody('PRECONDITION_FAILED', 'Installation has changed since you last fetched it; re-fetch and retry')
+        );
+      }
     }
 
     const updated = await SolarInstallation.findByIdAndUpdate(
       req.params.id,
       { capacityKw, latitude, longitude, substation }, // meterId and apiKeyHash are NOT editable here
-      { new: true, runValidators: true } // return the updated doc, and re-check schema rules
+      { new: true, runValidators: true }
     ).select('-apiKeyHash');
 
-    if (!updated) {
-      return res.status(404).json({ error: 'Installation not found' });
-    }
-
+    res.set('Last-Modified', updated.updatedAt.toUTCString());
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: 'Could not update installation' });
+    res.status(500).json(errorBody('UPDATE_FAILED', 'Could not update installation'));
   }
 });
 

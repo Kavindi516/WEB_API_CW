@@ -189,6 +189,13 @@ paths:
       responses:
         '200':
           description: Installation with latestReading embedded
+          headers:
+            ETag:
+              description: Entity tag of this representation (use for conditional GET)
+              schema: { type: string }
+            Last-Modified:
+              description: Last modification time (use as If-Unmodified-Since on PUT)
+              schema: { type: string }
           content:
             application/json:
               schema:
@@ -200,6 +207,11 @@ paths:
       summary: Replace an installation's editable fields (idempotent)
       parameters:
         - $ref: '#/components/parameters/IdParam'
+        - name: If-Unmodified-Since
+          in: header
+          required: false
+          description: Optimistic concurrency — pass the Last-Modified from your last GET; the update is rejected with 412 if the resource changed since.
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -214,9 +226,13 @@ paths:
                 substation: { type: string }
       responses:
         '200':
-          description: Updated installation
+          description: Updated installation (Last-Modified header returned)
+        '400':
+          description: Missing required fields
         '404':
           $ref: '#/components/responses/NotFound'
+        '412':
+          description: Precondition failed — the installation changed since If-Unmodified-Since
     delete:
       tags: [Installations]
       summary: Delete an installation
