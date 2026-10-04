@@ -2,13 +2,14 @@
 
 # SLSEA Solar Generation Data API
 
-**NB6007CEM – Web API Development** | BSc (Hons) Computing (Software Engineering), Coventry University (delivered at NIBM)
+**Web API Development-Coursework** | BSc (Hons) Computing (Software Engineering), Coventry University (delivered at NIBM)
 **Name:** N.M.J.K Nanayakkara
 **Index:** COBSCCOMP251P-014
 
 Real-time and historical solar generation data API for the Sri Lanka Sustainable Energy Authority (SLSEA). Metering devices push readings as write clients; SLSEA users read data scoped by jurisdiction (national / provincial / district).
 
 **Live API:** https://webapicw-production.up.railway.app
+
 **API documentation (Swagger UI):** https://webapicw-production.up.railway.app/api-docs
 
 ## Tech stack
