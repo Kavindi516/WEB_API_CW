@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true }); // mergeParams lets this router see :id from its parent
 const { SolarInstallation, GenerationReading } = require('../models');
-const deviceAuth = require('../middleware/deviceAuth');
+const deviceJwtAuth = require('../middleware/deviceJwtAuth');
 const { errorBody } = require('../utils/errors');
 
 // GET /installations/:id/readings — paginated, filterable, sortable history
@@ -55,7 +55,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /installations/:id/readings — a device pushes one new reading
-router.post('/', deviceAuth, async (req, res) => {
+router.post('/', deviceJwtAuth, async (req, res) => {
   try {
     const { timestamp, powerKw, energyKwh, voltage } = req.body;
 

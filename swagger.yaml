@@ -242,9 +242,10 @@ paths:
                     $ref: '#/components/schemas/Pagination'
     post:
       tags: [Readings]
-      summary: Device pushes a new generation reading (write path, device-authenticated)
+      summary: Device pushes a new generation reading (write path, JWT-authenticated)
+      description: Requires a bearer token with installation-write scope, bound to this installation.
       security:
-        - apiKeyAuth: []
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       requestBody:
@@ -272,6 +273,37 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: API key does not belong to this installation
+
+  /installations/{id}/token:
+    post:
+      tags: [Installations]
+      summary: Exchange a device API key for a short-lived installation-write JWT
+      description: >
+        Bootstrap endpoint. The device authenticates with its long-lived API key
+        and receives a short-lived JWT scoped to installation-write for this
+        installation. That token is then used on POST /installations/{id}/readings.
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: A scoped bearer token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  tokenType: { type: string, example: Bearer }
+                  expiresIn: { type: integer, example: 3600 }
+                  scope: { type: string, example: installation-write }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: API key does not belong to this installation
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /auth/login:
     post:
@@ -305,7 +337,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: SLSEA user token, obtained from /auth/login
+      description: >
+        JWT bearer token. SLSEA user tokens (jurisdiction-scoped reads) from
+        /auth/login, or device installation-write tokens from
+        /installations/{id}/token.
     apiKeyAuth:
       type: apiKey
       in: header

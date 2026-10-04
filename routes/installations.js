@@ -3,6 +3,8 @@ const router = express.Router();
 const { SolarInstallation, GenerationReading } = require('../models');
 const userAuth = require('../middleware/userAuth');
 const { installationScopeFilter } = require('../middleware/scopeByJurisdiction');
+const jwt = require('jsonwebtoken');
+const deviceAuth = require('../middleware/deviceAuth');
 
 // GET /installations — scoped by the logged-in user's jurisdiction
 router.get('/', userAuth, async (req, res) => {
@@ -79,6 +81,18 @@ router.get('/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch installation' });
   }
+});
+
+// POST /installations/:id/token — bootstrap: a device presents its long-lived
+// API key (x-api-key) and receives a short-lived, installation-scoped JWT.
+// deviceAuth verifies the key belongs to THIS installation before we sign anything.
+router.post('/:id/token', deviceAuth, async (req, res) => {
+  const token = jwt.sign(
+    { installationId: req.params.id, scope: 'installation-write' },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h' } // short-lived access token; the API key stays the long-lived secret
+  );
+  res.json({ token, tokenType: 'Bearer', expiresIn: 3600, scope: 'installation-write' });
 });
 
 // PUT /installations/:id — fully replace an installation's editable fields (idempotent)
