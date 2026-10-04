@@ -138,6 +138,47 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Installation'
+    post:
+      tags: [Installations]
+      summary: Provision a new installation (returns a one-time device API key)
+      description: >
+        Creates an installation and generates its device API key. The plain key
+        is returned ONCE; only its hash is stored. The device uses that key at
+        POST /installations/{id}/token to obtain write tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [meterId, capacityKw, latitude, longitude, substation]
+              properties:
+                meterId: { type: string }
+                capacityKw: { type: number }
+                latitude: { type: number }
+                longitude: { type: number }
+                substation: { type: string, description: "Substation ObjectId" }
+      responses:
+        '201':
+          description: Installation created (apiKey shown once)
+          headers:
+            Location:
+              description: URL of the newly created installation
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Installation'
+                  - type: object
+                    properties:
+                      apiKey:
+                        type: string
+                        description: Plain device API key — shown only once
+        '400':
+          description: Missing required fields or unknown substation
+        '409':
+          description: An installation with this meterId already exists
 
   /installations/{id}:
     get:

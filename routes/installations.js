@@ -1,10 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { SolarInstallation, GenerationReading } = require('../models');
+const crypto = require('crypto');
+const { SolarInstallation, GenerationReading, GridSubstation } = require('../models'); 
+const { errorBody } = require('../utils/errors');
 const userAuth = require('../middleware/userAuth');
 const { installationScopeFilter } = require('../middleware/scopeByJurisdiction');
 const jwt = require('jsonwebtoken');
 const deviceAuth = require('../middleware/deviceAuth');
+
+const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
 
 // GET /installations — scoped by the logged-in user's jurisdiction
 router.get('/', userAuth, async (req, res) => {
@@ -93,6 +97,47 @@ router.post('/:id/token', deviceAuth, async (req, res) => {
     { expiresIn: '1h' } // short-lived access token; the API key stays the long-lived secret
   );
   res.json({ token, tokenType: 'Bearer', expiresIn: 3600, scope: 'installation-write' });
+});
+
+// POST /installations — provision a new solar installation.
+// Generates the device's API key, stores only its hash, and returns the plain
+// key ONCE in the response (the device then uses it at /installations/{id}/token).
+router.post('/', async (req, res) => {
+  try {
+    const { meterId, capacityKw, latitude, longitude, substation } = req.body;
+
+    if (!meterId || capacityKw === undefined || latitude === undefined ||
+        longitude === undefined || !substation) {
+      return res.status(400).json(
+        errorBody('MISSING_FIELDS', 'meterId, capacityKw, latitude, longitude and substation are required')
+      );
+    }
+
+    // the substation must exist, so we never orphan an installation
+    const sub = await GridSubstation.findById(substation);
+    if (!sub) {
+      return res.status(400).json(errorBody('INVALID_SUBSTATION', 'substation does not exist'));
+    }
+
+    const apiKey = crypto.randomBytes(24).toString('hex'); // device secret, shown once
+    const installation = await SolarInstallation.create({
+      meterId, capacityKw, latitude, longitude, substation,
+      apiKeyHash: sha256(apiKey), // we store only the hash
+    });
+
+    const safe = installation.toObject();
+    delete safe.apiKeyHash; // never expose the stored hash
+
+    res
+      .status(201)
+      .location(`${req.baseUrl}/${installation._id}`)
+      .json({ ...safe, apiKey }); // apiKey returned once so the device can authenticate
+  } catch (err) {
+    if (err.code === 11000) { // duplicate meterId (unique index)
+      return res.status(409).json(errorBody('DUPLICATE_METER', 'An installation with this meterId already exists'));
+    }
+    res.status(500).json(errorBody('CREATE_FAILED', 'Could not create installation'));
+  }
 });
 
 // PUT /installations/:id — fully replace an installation's editable fields (idempotent)
