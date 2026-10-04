@@ -3,6 +3,7 @@ const express = require('express');
 const connectDB = require('./db');
 
 const app = express();
+app.set('etag', false);
 app.use(express.json()); // lets Express read JSON bodies later, for POST requests
 
 connectDB();

@@ -65,12 +65,14 @@ router.get('/:id', async (req, res) => {
     };
 
     const body = JSON.stringify(payload);
-    const etag = require('etag')(body); // generate a fingerprint of this exact response body
+    const etag = require('etag')(body); // fingerprint of this exact response body
 
     res.set('ETag', etag);
 
-    if (req.fresh) {
-      return res.status(304).end(); // client already has this exact version — send nothing
+    // conditional GET: if the client already holds this exact version, send nothing
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      return res.status(304).end();
     }
 
     res.type('application/json').send(body);
