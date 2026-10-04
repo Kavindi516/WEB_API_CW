@@ -15,6 +15,8 @@ servers:
 tags:
   - name: Hierarchy
     description: Provinces, districts, substations
+  - name: Substations
+    description: Grid substations and the installations connected to them
   - name: Installations
     description: Solar installation records (composite + CRUD)
   - name: Readings
@@ -55,6 +57,38 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /substations:
+    get:
+      tags: [Substations]
+      summary: List all substations, with district and province attached
+      responses:
+        '200':
+          description: Array of substations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Substation'
+
+  /substations/{id}/installations:
+    get:
+      tags: [Substations]
+      summary: List installations connected to this substation
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Array of installations at this substation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InstallationBasic'
+        '404':
+          $ref: '#/components/responses/NotFound'        
+
   /districts:
     get:
       tags: [Hierarchy]
@@ -69,7 +103,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/District'
+                  $ref: '#/components/schemas/DistrictDetail'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -114,6 +148,10 @@ paths:
       responses:
         '200':
           description: Installation with latestReading embedded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationDetail'
         '404':
           $ref: '#/components/responses/NotFound'
     put:
@@ -306,21 +344,105 @@ components:
 
     District:
       type: object
+      description: Shape returned by GET /provinces/{id}/districts — province is just an ObjectId reference
       properties:
         _id: { type: string }
         name: { type: string }
         code: { type: string }
-        province: { type: object }
+        province: { type: string, description: "ObjectId reference to the parent province" }
 
+    DistrictDetail:
+      type: object
+      description: Shape returned by GET /districts — province is populated
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        code: { type: string }
+        province:
+          type: object
+          properties:
+            _id: { type: string }
+            name: { type: string }
+            code: { type: string }
+
+    Substation:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        code: { type: string }
+        district:
+          type: object
+          properties:
+            _id: { type: string }
+            name: { type: string }
+            code: { type: string }
+            province:
+              type: object
+              properties:
+                _id: { type: string }
+                name: { type: string }
+                code: { type: string }
+        
     Installation:
       type: object
+      description: Shape returned by GET /installations (list view)
       properties:
         _id: { type: string }
         meterId: { type: string }
         capacityKw: { type: number }
         latitude: { type: number }
         longitude: { type: number }
-        substation: { type: object }
+        substation:
+          type: object
+          properties:
+            _id: { type: string }
+            name: { type: string }
+            code: { type: string }
+
+
+    InstallationDetail:
+      type: object
+      description: Shape returned by GET /installations/{id} — includes full substation hierarchy and latest reading
+      properties:
+        _id: { type: string }
+        meterId: { type: string }
+        capacityKw: { type: number }
+        latitude: { type: number }
+        longitude: { type: number }
+        substation:
+          type: object
+          properties:
+            _id: { type: string }
+            name: { type: string }
+            code: { type: string }
+            district:
+              type: object
+              properties:
+                _id: { type: string }
+                name: { type: string }
+                code: { type: string }
+                province:
+                  type: object
+                  properties:
+                    _id: { type: string }
+                    name: { type: string }
+                    code: { type: string }
+        latestReading:
+          oneOf:
+            - $ref: '#/components/schemas/Reading'
+            - type: 'null'        
+
+    InstallationBasic:
+      type: object
+      description: Shape returned by GET /substations/{id}/installations — substation is just an ObjectId reference (already known from the URL)
+      properties:
+        _id: { type: string }
+        meterId: { type: string }
+        capacityKw: { type: number }
+        latitude: { type: number }
+        longitude: { type: number }
+        substation: { type: string, description: "ObjectId reference to this substation" }        
 
     Reading:
       type: object

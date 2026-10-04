@@ -25,6 +25,7 @@ router.get('/:id/generation-summary', async (req, res) => {
         installationCount: 0,
         currentTotalPowerKw: 0,
         todayTotalEnergyKwh: 0,
+        generatedAt: new Date(),
       });
     }
 
@@ -42,7 +43,16 @@ router.get('/:id/generation-summary', async (req, res) => {
 
     const todayEnergy = await GenerationReading.aggregate([
       { $match: { installation: { $in: installationIds }, timestamp: { $gte: startOfToday } } },
-      { $group: { _id: null, totalEnergy: { $sum: '$powerKw' } } }, // approximation: see note below
+      { $sort: { timestamp: 1 } },
+      { $group: {
+          _id: '$installation',
+          firstEnergyToday: { $first: '$energyKwh' },
+          lastEnergyToday: { $last: '$energyKwh' },
+      }},
+      { $group: {
+          _id: null,
+          totalEnergy: { $sum: { $subtract: ['$lastEnergyToday', '$firstEnergyToday'] } },
+      }},
     ]);
 
     res.json({
