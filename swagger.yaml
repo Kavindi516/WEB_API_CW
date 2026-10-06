@@ -38,6 +38,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Province'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
 
   /provinces/{id}:
     get:
@@ -186,6 +188,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Installation'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
     post:
       tags: [Installations]
       summary: Provision a new installation (returns a one-time device API key)
@@ -292,6 +296,37 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /installations/{id}/token:
+    post:
+      tags: [Installations]
+      summary: Exchange a device API key for a short-lived installation-write JWT
+      description: >
+        Bootstrap endpoint. The device authenticates with its long-lived API key
+        and receives a short-lived JWT scoped to installation-write for this
+        installation. That token is then used on POST /installations/{id}/readings.
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: A scoped bearer token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  tokenType: { type: string, example: Bearer }
+                  expiresIn: { type: integer, example: 3600 }
+                  scope: { type: string, example: installation-write }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: API key does not belong to this installation
+        '404':
+          $ref: '#/components/responses/NotFound'        
+
   /installations/{id}/last-reading:
     get:
       tags: [Readings]
@@ -379,38 +414,28 @@ paths:
         '403':
           description: API key does not belong to this installation
 
-  /installations/{id}/token:
-    post:
-      tags: [Installations]
-      summary: Exchange a device API key for a short-lived installation-write JWT
-      description: >
-        Bootstrap endpoint. The device authenticates with its long-lived API key
-        and receives a short-lived JWT scoped to installation-write for this
-        installation. That token is then used on POST /installations/{id}/readings.
-      security:
-        - apiKeyAuth: []
+    /installations/{id}/readings/{readingId}:
+    get:
+      tags: [Readings]
+      summary: Get a single reading (atomic resource)
       parameters:
         - $ref: '#/components/parameters/IdParam'
+        - name: readingId
+          in: path
+          required: true
+          schema: { type: string }
+          description: MongoDB ObjectId of the reading
       responses:
         '200':
-          description: A scoped bearer token
+          description: One reading
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  token: { type: string }
-                  tokenType: { type: string, example: Bearer }
-                  expiresIn: { type: integer, example: 3600 }
-                  scope: { type: string, example: installation-write }
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: API key does not belong to this installation
+                $ref: '#/components/schemas/Reading'
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /auth/login:
+    /auth/login:
     post:
       tags: [Auth]
       summary: SLSEA user login — returns a JWT bearer token
@@ -469,6 +494,12 @@ components:
             $ref: '#/components/schemas/Error'
     Unauthorized:
       description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotAcceptable:
+      description: The requested representation is not available; this API only produces application/json
       content:
         application/json:
           schema:

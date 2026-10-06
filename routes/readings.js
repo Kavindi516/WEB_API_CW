@@ -54,6 +54,22 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /installations/:id/readings/:readingId — a single reading (atomic resource)
+router.get('/:readingId', async (req, res) => {
+  try {
+    const reading = await GenerationReading.findOne({
+      _id: req.params.readingId,
+      installation: req.params.id, // must belong to the installation in the URL
+    });
+    if (!reading) {
+      return res.status(404).json(errorBody('NOT_FOUND', 'Reading not found'));
+    }
+    res.json(reading);
+  } catch (err) {
+    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch reading'));
+  }
+});
+
 // POST /installations/:id/readings — a device pushes one new reading
 router.post('/', deviceJwtAuth, async (req, res) => {
   try {
