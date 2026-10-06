@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { District, GridSubstation } = require('../models');
 const userAuth = require('../middleware/userAuth');
+const { errorBody } = require('../utils/errors');
 
 // GET /districts — list districts, scoped to the logged-in user's jurisdiction
 router.get('/', userAuth, async (req, res) => {
@@ -25,18 +26,31 @@ router.get('/', userAuth, async (req, res) => {
   }
 });
 
+// GET /districts/:id — a single district 
+router.get('/:id', async (req, res) => {
+  try {
+    const district = await District.findById(req.params.id).populate('province', 'name code');
+    if (!district) {
+      return res.status(404).json(errorBody('NOT_FOUND', 'District not found'));
+    }
+    res.json(district);
+  } catch (err) {
+    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch district'));
+  }
+});
+
 // GET /districts/:id/substations — only substations in this district
 router.get('/:id/substations', async (req, res) => {
   try {
     const district = await District.findById(req.params.id);
     if (!district) {
-      return res.status(404).json({ error: 'District not found' });
+      return res.status(404).json(errorBody('NOT_FOUND', 'District not found'));
     }
     const substations = await GridSubstation.find({ district: req.params.id }).sort({ name: 1 });
     res.json(substations);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Could not fetch substations for this district' });
+    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch substations for this district'));
   }
 });
 

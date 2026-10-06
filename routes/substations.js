@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { GridSubstation, SolarInstallation } = require('../models');
+const { errorBody } = require('../utils/errors');
 
 // GET /substations — list all, with their district (and that district's province) attached
 router.get('/', async (req, res) => {
@@ -18,12 +19,30 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /substations/:id — a single substation (atomic resource)
+router.get('/:id', async (req, res) => {
+  try {
+    const substation = await GridSubstation.findById(req.params.id)
+      .populate({
+        path: 'district',
+        select: 'name code province',
+        populate: { path: 'province', select: 'name code' },
+      });
+    if (!substation) {
+      return res.status(404).json(errorBody('NOT_FOUND', 'Substation not found'));
+    }
+    res.json(substation);
+  } catch (err) {
+    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch substation'));
+  }
+});
+
 // GET /substations/:id/installations — only installations at this substation
 router.get('/:id/installations', async (req, res) => {
   try {
     const substation = await GridSubstation.findById(req.params.id);
     if (!substation) {
-      return res.status(404).json({ error: 'Substation not found' });
+      return res.status(404).json(errorBody('NOT_FOUND', 'Substation not found'));
     }
     const installations = await SolarInstallation.find({ substation: req.params.id })
       .select('-apiKeyHash')
@@ -31,7 +50,7 @@ router.get('/:id/installations', async (req, res) => {
     res.json(installations);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Could not fetch installations for this substation' });
+    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch installations for this substation'));
   }
 });
 

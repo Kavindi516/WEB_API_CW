@@ -39,6 +39,22 @@ paths:
                 items:
                   $ref: '#/components/schemas/Province'
 
+  /provinces/{id}:
+    get:
+      tags: [Hierarchy]
+      summary: Get a single province (atomic resource)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: One province
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Province'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /provinces/{id}/districts:
     get:
       tags: [Hierarchy]
@@ -70,6 +86,22 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Substation'
+
+  /substations/{id}:
+    get:
+      tags: [Substations]
+      summary: Get a single substation (atomic resource)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: One substation (with populated district and province)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Substation'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /substations/{id}/installations:
     get:
@@ -107,6 +139,22 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /districts/{id}:
+    get:
+      tags: [Hierarchy]
+      summary: Get a single district (atomic resource)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: One district (with populated province)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DistrictDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
   /districts/{id}/generation-summary:
     get:
       tags: [Hierarchy]

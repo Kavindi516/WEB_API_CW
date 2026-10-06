@@ -13,6 +13,19 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /provinces/:id — a single province (atomic resource)
+router.get('/:id', async (req, res) => {
+  try {
+    const province = await Province.findById(req.params.id);
+    if (!province) {
+      return res.status(404).json(errorBody('NOT_FOUND', 'Province not found'));
+    }
+    res.json(province);
+  } catch (err) {
+    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch province'));
+  }
+});
+
 // GET /provinces/:id/districts — only the districts belonging to this one province
 router.get('/:id/districts', async (req, res) => {
   try {
