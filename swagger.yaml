@@ -197,6 +197,8 @@ paths:
         Creates an installation and generates its device API key. The plain key
         is returned ONCE; only its hash is stored. The device uses that key at
         POST /installations/{id}/token to obtain write tokens.
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -231,6 +233,10 @@ paths:
           description: Missing required fields or unknown substation
         '409':
           description: An installation with this meterId already exists
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: National-role access required  
 
   /installations/{id}:
     get:
@@ -264,6 +270,8 @@ paths:
           required: false
           description: Optimistic concurrency — pass the Last-Modified from your last GET; the update is rejected with 412 if the resource changed since.
           schema: { type: string }
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -285,9 +293,15 @@ paths:
           $ref: '#/components/responses/NotFound'
         '412':
           description: Precondition failed — the installation changed since If-Unmodified-Since
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: National-role access required  
     delete:
       tags: [Installations]
       summary: Delete an installation
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
@@ -295,6 +309,10 @@ paths:
           description: Deleted successfully, no content
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: National-role access required
 
   /installations/{id}/token:
     post:

@@ -7,6 +7,7 @@ const userAuth = require('../middleware/userAuth');
 const { installationScopeFilter } = require('../middleware/scopeByJurisdiction');
 const jwt = require('jsonwebtoken');
 const deviceAuth = require('../middleware/deviceAuth');
+const requireNational = require('../middleware/requireNational');
 
 const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
 
@@ -103,7 +104,7 @@ router.post('/:id/token', deviceAuth, async (req, res) => {
 // POST /installations — provision a new solar installation.
 // Generates the device's API key, stores only its hash, and returns the plain
 // key ONCE in the response (the device then uses it at /installations/{id}/token).
-router.post('/', async (req, res) => {
+router.post('/', userAuth, requireNational, async (req, res) => {        
   try {
     const { meterId, capacityKw, latitude, longitude, substation } = req.body;
 
@@ -113,7 +114,7 @@ router.post('/', async (req, res) => {
         errorBody('MISSING_FIELDS', 'meterId, capacityKw, latitude, longitude and substation are required')
       );
     }
-
+ 
     // the substation must exist, so we never orphan an installation
     const sub = await GridSubstation.findById(substation);
     if (!sub) {
@@ -142,7 +143,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /installations/:id — fully replace an installation's editable fields (idempotent)
-router.put('/:id', async (req, res) => {
+router.put('/:id', userAuth, requireNational, async (req, res) => {       
   try {
     const { capacityKw, latitude, longitude, substation } = req.body;
 
@@ -185,7 +186,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /installations/:id — remove an installation
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', userAuth, requireNational, async (req, res) => {    
   try {
     const deleted = await SolarInstallation.findByIdAndDelete(req.params.id);
     if (!deleted) {
