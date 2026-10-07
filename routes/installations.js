@@ -28,11 +28,18 @@ router.get('/', userAuth, async (req, res) => {
 });
 
 // GET /installations/:id/last-reading — operational view: just the newest reading
-router.get('/:id/last-reading', async (req, res) => {
+router.get('/:id/last-reading', userAuth, async (req, res) => {
   try {
     const installation = await SolarInstallation.findById(req.params.id);
     if (!installation) {
       return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
+    }
+
+    // jurisdiction gate: same rule as the collection endpoint
+    const filter = await installationScopeFilter(req.user);
+    const inScope = await SolarInstallation.findOne({ _id: req.params.id, ...filter }).select('_id');
+    if (!inScope) {
+      return res.status(403).json(errorBody('FORBIDDEN', 'This installation is outside your jurisdiction'));
     }
 
     const reading = await GenerationReading.findOne({ installation: req.params.id })
@@ -48,8 +55,9 @@ router.get('/:id/last-reading', async (req, res) => {
   }
 });
 
+
 // GET /installations/:id — composite: the installation + its latest reading
-router.get('/:id', async (req, res) => {
+router.get('/:id', userAuth, async (req, res) => {
   try {
     const installation = await SolarInstallation.findById(req.params.id)
       .select('-apiKeyHash')
@@ -63,6 +71,13 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
     }
 
+    // jurisdiction gate
+    const filter = await installationScopeFilter(req.user);
+    const inScope = await SolarInstallation.findOne({ _id: req.params.id, ...filter }).select('_id');
+    if (!inScope) {
+      return res.status(403).json(errorBody('FORBIDDEN', 'This installation is outside your jurisdiction'));
+    }
+
     const latestReading = await GenerationReading.findOne({ installation: installation._id })
       .sort({ timestamp: -1 });
 
@@ -72,16 +87,15 @@ router.get('/:id', async (req, res) => {
     };
 
     const body = JSON.stringify(payload);
-    const etag = require('etag')(body); // fingerprint of this exact response body
+    const etag = require('etag')(body);
 
     res.set('ETag', etag);
-    res.set('Last-Modified', installation.updatedAt.toUTCString()); // used as If-Unmodified-Since on PUT
+    res.set('Last-Modified', installation.updatedAt.toUTCString());
 
-    // conditional GET: if the client already holds this exact version, send nothing
     const ifNoneMatch = req.headers['if-none-match'];
     if (ifNoneMatch && ifNoneMatch === etag) {
       return res.status(304).end();
-    }
+    } 
 
     res.type('application/json').send(body);
   } catch (err) {

@@ -22,4 +22,12 @@ async function installationScopeFilter(user) {
   return { _id: null }; // unknown role, matches nothing
 }
 
-module.exports = { installationScopeFilter };
+// Is this district inside the user's jurisdiction?
+function districtInScope(user, district) {
+  if (user.role === 'NATIONAL') return true;
+  if (user.role === 'PROVINCIAL') return String(district.province) === String(user.province);
+  if (user.role === 'DISTRICT') return String(district._id) === String(user.district);
+  return false;
+}
+
+module.exports = { installationScopeFilter, districtInScope };

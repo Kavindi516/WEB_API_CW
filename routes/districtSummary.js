@@ -2,14 +2,21 @@ const express = require('express');
 const router = express.Router();
 const { District, GridSubstation, SolarInstallation, GenerationReading } = require('../models');
 const { errorBody, sendError } = require('../utils/errors');
+const userAuth = require('../middleware/userAuth');
+const { districtInScope } = require('../middleware/scopeByJurisdiction');
 
 // GET /districts/:id/generation-summary — processing resource:
 // current total power + today's total energy, aggregated across every installation in the district
-router.get('/:id/generation-summary', async (req, res) => {
+router.get('/:id/generation-summary', userAuth, async (req, res) => {
   try {
     const district = await District.findById(req.params.id);
     if (!district) {
       return res.status(404).json(errorBody('NOT_FOUND', 'District not found'));
+    }
+
+    // jurisdiction gate
+    if (!districtInScope(req.user, district)) {
+      return res.status(403).json(errorBody('FORBIDDEN', 'This district is outside your jurisdiction'));
     }
 
     // step 1: every substation in this district
