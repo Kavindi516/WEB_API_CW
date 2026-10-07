@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { District, GridSubstation, SolarInstallation, GenerationReading } = require('../models');
+const { errorBody, sendError } = require('../utils/errors');
 
 // GET /districts/:id/generation-summary — processing resource:
 // current total power + today's total energy, aggregated across every installation in the district
@@ -8,14 +9,14 @@ router.get('/:id/generation-summary', async (req, res) => {
   try {
     const district = await District.findById(req.params.id);
     if (!district) {
-      return res.status(404).json({ error: 'District not found' });
+      return res.status(404).json(errorBody('NOT_FOUND', 'District not found'));
     }
 
-    // step 1: find every substation in this district
+    // step 1: every substation in this district
     const substations = await GridSubstation.find({ district: req.params.id }).select('_id');
     const substationIds = substations.map((s) => s._id);
 
-    // step 2: find every installation on those substations
+    // step 2: every installation on those substations
     const installations = await SolarInstallation.find({ substation: { $in: substationIds } }).select('_id');
     const installationIds = installations.map((i) => i._id);
 
@@ -29,15 +30,15 @@ router.get('/:id/generation-summary', async (req, res) => {
       });
     }
 
-    // step 3a: current total power — the LATEST reading per installation, summed
+    // step 3a: current total power — latest reading per installation, summed
     const latestPerInstallation = await GenerationReading.aggregate([
       { $match: { installation: { $in: installationIds } } },
       { $sort: { timestamp: -1 } },
-      { $group: { _id: '$installation', latestPower: { $first: '$powerKw' } } }, //newest power per installation
+      { $group: { _id: '$installation', latestPower: { $first: '$powerKw' } } },
       { $group: { _id: null, totalPower: { $sum: '$latestPower' } } },
     ]);
 
-    // step 3b: today's total energy — sum of all readings from today across the district
+    // step 3b: today's energy — delta of the cumulative energy meter across today
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -48,11 +49,11 @@ router.get('/:id/generation-summary', async (req, res) => {
           _id: '$installation',
           firstEnergyToday: { $first: '$energyKwh' },
           lastEnergyToday: { $last: '$energyKwh' },
-      }},
+      } },
       { $group: {
           _id: null,
           totalEnergy: { $sum: { $subtract: ['$lastEnergyToday', '$firstEnergyToday'] } },
-      }},
+      } },
     ]);
 
     res.json({
@@ -63,7 +64,7 @@ router.get('/:id/generation-summary', async (req, res) => {
       generatedAt: new Date(),
     });
   } catch (err) {
-    res.status(500).json({ error: 'Could not compute district summary' });
+    sendError(res, err, 'SUMMARY_FAILED', 'Could not compute district summary');
   }
 });
 

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // mergeParams lets this router see :id from its parent
 const { SolarInstallation, GenerationReading } = require('../models');
 const deviceJwtAuth = require('../middleware/deviceJwtAuth');
-const { errorBody } = require('../utils/errors');
+const { errorBody, sendError } = require('../utils/errors');
 
 // GET /installations/:id/readings — paginated, filterable, sortable history
 router.get('/', async (req, res) => {
@@ -12,25 +12,21 @@ router.get('/', async (req, res) => {
       return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
     }
 
-    // ---- 1. build the filter ----
     const filter = { installation: req.params.id };
 
     if (req.query.from || req.query.to) {
       filter.timestamp = {};
-      if (req.query.from) filter.timestamp.$gte = new Date(req.query.from); // $gte = greater than or equal
-      if (req.query.to) filter.timestamp.$lte = new Date(req.query.to);     // $lte = less than or equal
+      if (req.query.from) filter.timestamp.$gte = new Date(req.query.from);
+      if (req.query.to) filter.timestamp.$lte = new Date(req.query.to);
     }
 
-    // ---- 2. sorting ----
     const sortDir = req.query.order === 'asc' ? 1 : -1; // default newest-first
     const sort = { timestamp: sortDir };
 
-    // ---- 3. pagination ----
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50)); // cap at 200 so nobody requests everything at once
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50)); // cap at 200
     const skip = (page - 1) * limit;
 
-    // ---- 4. run the query + get a total count, in parallel ----
     const [readings, total] = await Promise.all([
       GenerationReading.find(filter).sort(sort).skip(skip).limit(limit),
       GenerationReading.countDocuments(filter),
@@ -50,7 +46,7 @@ router.get('/', async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch readings'));
+    sendError(res, err, 'FETCH_FAILED', 'Could not fetch readings');
   }
 });
 
@@ -66,7 +62,7 @@ router.get('/:readingId', async (req, res) => {
     }
     res.json(reading);
   } catch (err) {
-    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch reading'));
+    sendError(res, err, 'FETCH_FAILED', 'Could not fetch reading');
   }
 });
 
@@ -94,7 +90,7 @@ router.post('/', deviceJwtAuth, async (req, res) => {
       .location(`${req.baseUrl}/${reading._id}`) // tells the client where the new resource now lives
       .json(reading);
   } catch (err) {
-    res.status(500).json(errorBody('SAVE_FAILED', 'Could not save reading'));
+    sendError(res, err, 'SAVE_FAILED', 'Could not save reading');
   }
 });
 

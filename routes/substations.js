@@ -1,21 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const { GridSubstation, SolarInstallation } = require('../models');
-const { errorBody } = require('../utils/errors');
+const { errorBody, sendError } = require('../utils/errors');
 
-// GET /substations — list all, with their district (and that district's province) attached
+// GET /substations — list all, with district (and that district's province) attached
 router.get('/', async (req, res) => {
   try {
     const substations = await GridSubstation.find()
       .populate({
         path: 'district',
         select: 'name code province',
-        populate: { path: 'province', select: 'name code' }, // populate can go two levels deep
+        populate: { path: 'province', select: 'name code' },
       })
       .sort({ name: 1 });
     res.json(substations);
   } catch (err) {
-    res.status(500).json({ error: 'Could not fetch substations' });
+    sendError(res, err, 'FETCH_FAILED', 'Could not fetch substations');
   }
 });
 
@@ -33,7 +33,7 @@ router.get('/:id', async (req, res) => {
     }
     res.json(substation);
   } catch (err) {
-    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch substation'));
+    sendError(res, err, 'FETCH_FAILED', 'Could not fetch substation');
   }
 });
 
@@ -49,8 +49,7 @@ router.get('/:id/installations', async (req, res) => {
       .sort({ meterId: 1 });
     res.json(installations);
   } catch (err) {
-    console.error(err);
-    res.status(500).json(errorBody('FETCH_FAILED', 'Could not fetch installations for this substation'));
+    sendError(res, err, 'FETCH_FAILED', 'Could not fetch installations for this substation');
   }
 });
 

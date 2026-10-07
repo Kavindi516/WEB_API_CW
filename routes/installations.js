@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
-const { SolarInstallation, GenerationReading, GridSubstation } = require('../models'); 
-const { errorBody } = require('../utils/errors');
+const { SolarInstallation, GenerationReading, GridSubstation } = require('../models');
+const { errorBody, sendError } = require('../utils/errors');
 const userAuth = require('../middleware/userAuth');
 const { installationScopeFilter } = require('../middleware/scopeByJurisdiction');
 const jwt = require('jsonwebtoken');
@@ -23,7 +23,7 @@ router.get('/', userAuth, async (req, res) => {
 
     res.json(installations);
   } catch (err) {
-    res.status(500).json({ error: 'Could not fetch installations' });
+    sendError(res, err, 'FETCH_FAILED', 'Could not fetch installations');
   }
 });
 
@@ -32,19 +32,19 @@ router.get('/:id/last-reading', async (req, res) => {
   try {
     const installation = await SolarInstallation.findById(req.params.id);
     if (!installation) {
-      return res.status(404).json({ error: 'Installation not found' });
+      return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
     }
 
     const reading = await GenerationReading.findOne({ installation: req.params.id })
       .sort({ timestamp: -1 });
 
     if (!reading) {
-      return res.status(404).json({ error: 'No readings yet for this installation' });
+      return res.status(404).json(errorBody('NO_READINGS', 'No readings yet for this installation'));
     }
 
     res.json(reading);
   } catch (err) {
-    res.status(500).json({ error: 'Could not fetch last reading' });
+    sendError(res, err, 'FETCH_FAILED', 'Could not fetch last reading');
   }
 });
 
@@ -60,7 +60,7 @@ router.get('/:id', async (req, res) => {
       });
 
     if (!installation) {
-      return res.status(404).json({ error: 'Installation not found' });
+      return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
     }
 
     const latestReading = await GenerationReading.findOne({ installation: installation._id })
@@ -85,13 +85,12 @@ router.get('/:id', async (req, res) => {
 
     res.type('application/json').send(body);
   } catch (err) {
-    res.status(500).json({ error: 'Could not fetch installation' });
+    sendError(res, err, 'FETCH_FAILED', 'Could not fetch installation');
   }
 });
 
 // POST /installations/:id/token — bootstrap: a device presents its long-lived
 // API key (x-api-key) and receives a short-lived, installation-scoped JWT.
-// deviceAuth verifies the key belongs to THIS installation before we sign anything.
 router.post('/:id/token', deviceAuth, async (req, res) => {
   const token = jwt.sign(
     { installationId: req.params.id, scope: 'installation-write' },
@@ -101,10 +100,8 @@ router.post('/:id/token', deviceAuth, async (req, res) => {
   res.json({ token, tokenType: 'Bearer', expiresIn: 3600, scope: 'installation-write' });
 });
 
-// POST /installations — provision a new solar installation.
-// Generates the device's API key, stores only its hash, and returns the plain
-// key ONCE in the response (the device then uses it at /installations/{id}/token).
-router.post('/', userAuth, requireNational, async (req, res) => {        
+// POST /installations — provision a new solar installation (national-only).
+router.post('/', userAuth, requireNational, async (req, res) => {
   try {
     const { meterId, capacityKw, latitude, longitude, substation } = req.body;
 
@@ -114,7 +111,7 @@ router.post('/', userAuth, requireNational, async (req, res) => {
         errorBody('MISSING_FIELDS', 'meterId, capacityKw, latitude, longitude and substation are required')
       );
     }
- 
+
     // the substation must exist, so we never orphan an installation
     const sub = await GridSubstation.findById(substation);
     if (!sub) {
@@ -138,12 +135,12 @@ router.post('/', userAuth, requireNational, async (req, res) => {
     if (err.code === 11000) { // duplicate meterId (unique index)
       return res.status(409).json(errorBody('DUPLICATE_METER', 'An installation with this meterId already exists'));
     }
-    res.status(500).json(errorBody('CREATE_FAILED', 'Could not create installation'));
+    sendError(res, err, 'CREATE_FAILED', 'Could not create installation');
   }
 });
 
-// PUT /installations/:id — fully replace an installation's editable fields (idempotent)
-router.put('/:id', userAuth, requireNational, async (req, res) => {       
+// PUT /installations/:id — fully replace an installation's editable fields (national-only, idempotent)
+router.put('/:id', userAuth, requireNational, async (req, res) => {
   try {
     const { capacityKw, latitude, longitude, substation } = req.body;
 
@@ -158,8 +155,7 @@ router.put('/:id', userAuth, requireNational, async (req, res) => {
       return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
     }
 
-    // optimistic concurrency: if the client sent If-Unmodified-Since, only proceed
-    // when the resource has NOT changed since they last fetched it.
+    // optimistic concurrency: only proceed when the resource has NOT changed since the client fetched it
     const ifUnmodifiedSince = req.header('If-Unmodified-Since');
     if (ifUnmodifiedSince) {
       const since = new Date(ifUnmodifiedSince);
@@ -181,22 +177,21 @@ router.put('/:id', userAuth, requireNational, async (req, res) => {
     res.set('Last-Modified', updated.updatedAt.toUTCString());
     res.json(updated);
   } catch (err) {
-    res.status(500).json(errorBody('UPDATE_FAILED', 'Could not update installation'));
+    sendError(res, err, 'UPDATE_FAILED', 'Could not update installation');
   }
 });
 
-// DELETE /installations/:id — remove an installation
-router.delete('/:id', userAuth, requireNational, async (req, res) => {    
+// DELETE /installations/:id — remove an installation (national-only)
+router.delete('/:id', userAuth, requireNational, async (req, res) => {
   try {
     const deleted = await SolarInstallation.findByIdAndDelete(req.params.id);
     if (!deleted) {
-      return res.status(404).json({ error: 'Installation not found' });
+      return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
     }
     res.status(204).send(); // 204 = success, nothing to return
   } catch (err) {
-    res.status(500).json({ error: 'Could not delete installation' });
+    sendError(res, err, 'DELETE_FAILED', 'Could not delete installation');
   }
 });
-
 
 module.exports = router;
