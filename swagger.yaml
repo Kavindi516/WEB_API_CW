@@ -121,7 +121,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/InstallationBasic'
         '404':
-          $ref: '#/components/responses/NotFound'        
+          $ref: '#/components/responses/NotFound'
 
   /districts:
     get:
@@ -156,11 +156,13 @@ paths:
                 $ref: '#/components/schemas/DistrictDetail'
         '404':
           $ref: '#/components/responses/NotFound'
-  
+
   /districts/{id}/generation-summary:
     get:
       tags: [Hierarchy]
       summary: Aggregated current power + today's energy across a district (processing resource)
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
@@ -170,6 +172,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DistrictSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: District is outside your jurisdiction
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -188,6 +194,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Installation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '406':
           $ref: '#/components/responses/NotAcceptable'
     post:
@@ -236,12 +244,14 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: National-role access required  
+          description: National-role access required
 
   /installations/{id}:
     get:
       tags: [Installations]
       summary: Get one installation with its latest reading (composite resource)
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
@@ -258,6 +268,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InstallationDetail'
+        '304':
+          description: Not Modified (If-None-Match matched the current ETag)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Installation is outside your jurisdiction
         '404':
           $ref: '#/components/responses/NotFound'
     put:
@@ -296,7 +312,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: National-role access required  
+          description: National-role access required
     delete:
       tags: [Installations]
       summary: Delete an installation
@@ -343,12 +359,14 @@ paths:
         '403':
           description: API key does not belong to this installation
         '404':
-          $ref: '#/components/responses/NotFound'        
+          $ref: '#/components/responses/NotFound'
 
   /installations/{id}/last-reading:
     get:
       tags: [Readings]
       summary: Most recent reading for an installation (derived/operational resource)
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
@@ -358,6 +376,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Reading'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Installation is outside your jurisdiction
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -365,6 +387,8 @@ paths:
     get:
       tags: [Readings]
       summary: Paginated, filterable, sortable reading history (analytical resource)
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
         - name: page
@@ -398,6 +422,12 @@ paths:
                       $ref: '#/components/schemas/Reading'
                   pagination:
                     $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Installation is outside your jurisdiction
+        '404':
+          $ref: '#/components/responses/NotFound'
     post:
       tags: [Readings]
       summary: Device pushes a new generation reading (write path, JWT-authenticated)
@@ -432,10 +462,12 @@ paths:
         '403':
           description: API key does not belong to this installation
 
-    /installations/{id}/readings/{readingId}:
+  /installations/{id}/readings/{readingId}:
     get:
       tags: [Readings]
       summary: Get a single reading (atomic resource)
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
         - name: readingId
@@ -450,10 +482,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Reading'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Installation is outside your jurisdiction
         '404':
           $ref: '#/components/responses/NotFound'
 
-    /auth/login:
+  /auth/login:
     post:
       tags: [Auth]
       summary: SLSEA user login — returns a JWT bearer token
@@ -572,7 +608,7 @@ components:
                 _id: { type: string }
                 name: { type: string }
                 code: { type: string }
-        
+
     Installation:
       type: object
       description: Shape returned by GET /installations (list view)
@@ -588,7 +624,6 @@ components:
             _id: { type: string }
             name: { type: string }
             code: { type: string }
-
 
     InstallationDetail:
       type: object
@@ -620,7 +655,7 @@ components:
         latestReading:
           oneOf:
             - $ref: '#/components/schemas/Reading'
-            - type: 'null'        
+            - type: 'null'
 
     InstallationBasic:
       type: object
@@ -631,7 +666,7 @@ components:
         capacityKw: { type: number }
         latitude: { type: number }
         longitude: { type: number }
-        substation: { type: string, description: "ObjectId reference to this substation" }        
+        substation: { type: string, description: "ObjectId reference to this substation" }
 
     Reading:
       type: object
