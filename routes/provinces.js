@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Province, District } = require('../models');
 const { errorBody, sendError } = require('../utils/errors');
+const { validateIdParam } = require('../validation/schemas');
 
 // GET /provinces — list all provinces
 router.get('/', async (req, res) => {
@@ -14,7 +15,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /provinces/:id — a single province (atomic resource)
-router.get('/:id', async (req, res) => {
+router.get('/:id', validateIdParam, async (req, res) => {
   try {
     const province = await Province.findById(req.params.id);
     if (!province) {
@@ -27,7 +28,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // GET /provinces/:id/districts — only the districts belonging to this one province
-router.get('/:id/districts', async (req, res) => {
+router.get('/:id/districts', validateIdParam, async (req, res) => {
   try {
     const province = await Province.findById(req.params.id);
     if (!province) {

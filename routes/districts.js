@@ -3,6 +3,7 @@ const router = express.Router();
 const { District, GridSubstation } = require('../models');
 const userAuth = require('../middleware/userAuth');
 const { errorBody, sendError } = require('../utils/errors');
+const { validateIdParam } = require('../validation/schemas');
 
 // GET /districts — list districts, scoped to the logged-in user's jurisdiction
 router.get('/', userAuth, async (req, res) => {
@@ -26,7 +27,7 @@ router.get('/', userAuth, async (req, res) => {
 });
 
 // GET /districts/:id — a single district (atomic resource)
-router.get('/:id', async (req, res) => {
+router.get('/:id', validateIdParam, async (req, res) => {
   try {
     const district = await District.findById(req.params.id).populate('province', 'name code');
     if (!district) {
@@ -39,7 +40,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // GET /districts/:id/substations — only substations in this district
-router.get('/:id/substations', async (req, res) => {
+router.get('/:id/substations', validateIdParam, async (req, res) => {
   try {
     const district = await District.findById(req.params.id);
     if (!district) {

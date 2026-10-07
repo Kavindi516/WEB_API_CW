@@ -66,17 +66,55 @@ Full interactive API docs (all endpoints, request/response schemas, auth require
 
 ## Authentication
 
-- **SLSEA users** (reading data): `POST /auth/login` with `username`/`password` returns a JWT bearer token. Include it as `Authorization: Bearer <token>` on scoped endpoints (e.g. `/districts`, `/installations`).
-- **Devices** (writing readings): each installation has its own API key (from `seed-credentials.json`). Include it as `x-api-key: <key>` when calling `POST /installations/{id}/readings`.
+There are two kinds of bearer token, and they are **not interchangeable**. Each carries an `aud` (audience) claim that the API enforces.
+
+- **SLSEA users** (reading data): `POST /auth/login` with `username`/`password` returns a **user token** (8 h). Send it as `Authorization: Bearer <token>` on the scoped read/admin endpoints (e.g. `/districts`, `/installations`).
+- **Devices** (writing readings): each installation has its own API key (from `seed-credentials.json`). The device sends it as `x-api-key: <key>` to `POST /installations/{id}/token` and receives a **device token** (1 h, scope `installation-write`, bound to that one installation). The device then sends it as `Authorization: Bearer <token>` to `POST /installations/{id}/readings`.
+
+| Token used on…                         | Result                         |
+|----------------------------------------|--------------------------------|
+| user endpoint with a **device** token  | `403 WRONG_TOKEN_TYPE`         |
+| `POST …/readings` with a **user** token | `403 WRONG_TOKEN_TYPE`         |
+| device token for installation A on B   | `403 WRONG_INSTALLATION`       |
+| missing / forged / expired token       | `401 NO_TOKEN` / `BAD_TOKEN`   |
+
+Note: tokens issued before this audience check was added (no `aud` claim) are rejected with `401`; users just log in again and devices re-request a token.
+
+## Validation and errors
+
+Every route with input goes through a validation layer (`middleware/validate.js`, rules in `validation/schemas.js`) **before** any database work: path ids must be 24-hex ObjectIds, body fields must have the right JSON type and range, query parameters (`page`, `limit`, `from`, `to`, `order`) are checked, and unknown body fields are dropped.
+
+All errors share one shape: `{ "error": { "code", "message", "detail" } }`. For validation failures `detail` lists every problem as `{ location, field, message }`.
+
+| Status | Codes |
+|--------|-------|
+| 400 | `VALIDATION_ERROR`, `INVALID_ID`, `INVALID_JSON`, `INVALID_SUBSTATION` |
+| 401 | `NO_TOKEN`, `BAD_TOKEN`, `NO_API_KEY`, `INVALID_CREDENTIALS` |
+| 403 | `WRONG_TOKEN_TYPE`, `WRONG_SCOPE`, `WRONG_INSTALLATION`, `INVALID_API_KEY`, `FORBIDDEN` |
+| 404 / 406 / 409 | `NOT_FOUND` / `NOT_ACCEPTABLE` / `DUPLICATE`, `DUPLICATE_METER` |
+| 412 / 413 / 415 | `PRECONDITION_FAILED` / `PAYLOAD_TOO_LARGE` / `UNSUPPORTED_MEDIA_TYPE` |
+| 500 | `INTERNAL_ERROR` (generic message — details are only logged server-side) |
+
+## Tests
+
+```bash
+npm test
+```
+
+Uses Node's built-in test runner (no extra dependencies, no database needed). It covers token separation, validation and error handling.
 
 ## Project structure
 
 ```
-index.js                   # Express app entry point
+index.js                   # Server entry point (checks env, connects DB, listens)
+app.js                     # The Express app itself (importable by tests)
 db.js                      # MongoDB connection
 models/                    # Mongoose schemas
 routes/                    # Route handlers (provinces, districts, substations, installations, readings, auth)
-middleware/                # userAuth, deviceAuth, scopeByJurisdiction
+middleware/                # userAuth, deviceJwtAuth, deviceAuth, validate, scopeByJurisdiction
+validation/                # Per-route validation schemas
+utils/                     # errors (error shape + mapping), tokens (sign/verify user & device JWTs)
+test/                      # node:test suites
 swagger.yaml               # OpenAPI 3.0 spec served at /api-docs
 seed.js                    # Database seeding script
 ```

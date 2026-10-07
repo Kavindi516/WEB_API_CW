@@ -215,10 +215,10 @@ paths:
               type: object
               required: [meterId, capacityKw, latitude, longitude, substation]
               properties:
-                meterId: { type: string }
-                capacityKw: { type: number }
-                latitude: { type: number }
-                longitude: { type: number }
+                meterId: { type: string, minLength: 1, maxLength: 50 }
+                capacityKw: { type: number, exclusiveMinimum: true, minimum: 0 }
+                latitude: { type: number, minimum: -90, maximum: 90 }
+                longitude: { type: number, minimum: -180, maximum: 180 }
                 substation: { type: string, description: "Substation ObjectId" }
       responses:
         '201':
@@ -238,7 +238,11 @@ paths:
                         type: string
                         description: Plain device API key — shown only once
         '400':
-          description: Missing required fields or unknown substation
+          description: Validation failed (VALIDATION_ERROR, field list in error.detail) or unknown substation (INVALID_SUBSTATION)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '409':
           description: An installation with this meterId already exists
         '401':
@@ -296,15 +300,19 @@ paths:
               type: object
               required: [capacityKw, latitude, longitude, substation]
               properties:
-                capacityKw: { type: number }
-                latitude: { type: number }
-                longitude: { type: number }
+                capacityKw: { type: number, exclusiveMinimum: true, minimum: 0 }
+                latitude: { type: number, minimum: -90, maximum: 90 }
+                longitude: { type: number, minimum: -180, maximum: 180 }
                 substation: { type: string }
       responses:
         '200':
           description: Updated installation (Last-Modified header returned)
         '400':
-          description: Missing required fields
+          description: Validation failed (VALIDATION_ERROR), malformed id (INVALID_ID) or unknown substation (INVALID_SUBSTATION)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           $ref: '#/components/responses/NotFound'
         '412':
@@ -393,17 +401,17 @@ paths:
         - $ref: '#/components/parameters/IdParam'
         - name: page
           in: query
-          schema: { type: integer, default: 1 }
+          schema: { type: integer, default: 1, minimum: 1 }
         - name: limit
           in: query
-          schema: { type: integer, default: 50, maximum: 200 }
+          schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
         - name: from
           in: query
-          description: ISO date — start of time window filter
+          description: ISO-8601 date or date-time — start of time window filter
           schema: { type: string, format: date }
         - name: to
           in: query
-          description: ISO date — end of time window filter
+          description: ISO-8601 date or date-time — end of time window filter (must not be earlier than `from`)
           schema: { type: string, format: date }
         - name: order
           in: query
@@ -422,6 +430,8 @@ paths:
                       $ref: '#/components/schemas/Reading'
                   pagination:
                     $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -431,9 +441,12 @@ paths:
     post:
       tags: [Readings]
       summary: Device pushes a new generation reading (write path, JWT-authenticated)
-      description: Requires a bearer token with installation-write scope, bound to this installation.
+      description: >
+        Requires a DEVICE token (installation-write scope) bound to this
+        installation. SLSEA user tokens are rejected with 403 WRONG_TOKEN_TYPE.
+        The installation must still exist (404 otherwise).
       security:
-        - bearerAuth: []
+        - deviceBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       requestBody:
@@ -444,10 +457,13 @@ paths:
               type: object
               required: [powerKw, energyKwh, voltage]
               properties:
-                timestamp: { type: string, format: date-time }
-                powerKw: { type: number }
-                energyKwh: { type: number }
-                voltage: { type: number }
+                timestamp:
+                  type: string
+                  format: date-time
+                  description: ISO-8601. Defaults to the server time. May not be more than 5 minutes in the future.
+                powerKw: { type: number, minimum: 0 }
+                energyKwh: { type: number, minimum: 0, description: Cumulative energy meter value }
+                voltage: { type: number, minimum: 0 }
       responses:
         '201':
           description: Reading created
@@ -456,11 +472,23 @@ paths:
               description: URL of the newly created reading
               schema: { type: string }
         '400':
-          description: Missing required fields
+          $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: API key does not belong to this installation
+          description: >
+            WRONG_TOKEN_TYPE (a user token was used), WRONG_SCOPE, or
+            WRONG_INSTALLATION (token is bound to a different installation)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
 
   /installations/{id}/readings/{readingId}:
     get:
@@ -501,8 +529,8 @@ paths:
               type: object
               required: [username, password]
               properties:
-                username: { type: string }
-                password: { type: string }
+                username: { type: string, minLength: 1, maxLength: 100 }
+                password: { type: string, minLength: 1, maxLength: 200 }
       responses:
         '200':
           description: Login successful
@@ -512,8 +540,14 @@ paths:
                 type: object
                 properties:
                   token: { type: string }
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '401':
           description: Invalid credentials
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
 
 components:
   securitySchemes:
@@ -522,9 +556,17 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: >
-        JWT bearer token. SLSEA user tokens (jurisdiction-scoped reads) from
-        /auth/login, or device installation-write tokens from
-        /installations/{id}/token.
+        SLSEA USER token from POST /auth/login (valid 8 hours). Used for every
+        read/admin endpoint. A device token is rejected here with
+        403 WRONG_TOKEN_TYPE, even though it is validly signed.
+    deviceBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        DEVICE token from POST /installations/{id}/token (valid 1 hour, scope
+        installation-write, bound to one installation). Used only to push
+        readings. A user token is rejected here with 403 WRONG_TOKEN_TYPE.
     apiKeyAuth:
       type: apiKey
       in: header
@@ -536,10 +578,31 @@ components:
       name: id
       in: path
       required: true
-      schema: { type: string }
-      description: MongoDB ObjectId
+      schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+      description: MongoDB ObjectId (24 hex characters). A malformed value is a 400 INVALID_ID.
 
   responses:
+    ValidationError:
+      description: >
+        Malformed id (INVALID_ID), invalid JSON (INVALID_JSON) or a field that failed
+        validation (VALIDATION_ERROR). For VALIDATION_ERROR and INVALID_ID, error.detail
+        is a list of `{ location, field, message }` entries — one per problem.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PayloadTooLarge:
+      description: Request body exceeds the size limit (PAYLOAD_TOO_LARGE)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnsupportedMediaType:
+      description: Request body was not sent as application/json (UNSUPPORTED_MEDIA_TYPE)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     NotFound:
       description: Resource not found
       content:

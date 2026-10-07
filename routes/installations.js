@@ -5,9 +5,12 @@ const { SolarInstallation, GenerationReading, GridSubstation } = require('../mod
 const { errorBody, sendError } = require('../utils/errors');
 const userAuth = require('../middleware/userAuth');
 const { installationScopeFilter } = require('../middleware/scopeByJurisdiction');
-const jwt = require('jsonwebtoken');
 const deviceAuth = require('../middleware/deviceAuth');
 const requireNational = require('../middleware/requireNational');
+const { signDeviceToken, DEVICE_SCOPE } = require('../utils/tokens');
+const {
+  validateIdParam, validateCreateInstallation, validateReplaceInstallation,
+} = require('../validation/schemas');
 
 const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
 
@@ -28,7 +31,7 @@ router.get('/', userAuth, async (req, res) => {
 });
 
 // GET /installations/:id/last-reading — operational view: just the newest reading
-router.get('/:id/last-reading', userAuth, async (req, res) => {
+router.get('/:id/last-reading', userAuth, validateIdParam, async (req, res) => {
   try {
     const installation = await SolarInstallation.findById(req.params.id);
     if (!installation) {
@@ -57,7 +60,7 @@ router.get('/:id/last-reading', userAuth, async (req, res) => {
 
 
 // GET /installations/:id — composite: the installation + its latest reading
-router.get('/:id', userAuth, async (req, res) => {
+router.get('/:id', userAuth, validateIdParam, async (req, res) => {
   try {
     const installation = await SolarInstallation.findById(req.params.id)
       .select('-apiKeyHash')
@@ -105,26 +108,20 @@ router.get('/:id', userAuth, async (req, res) => {
 
 // POST /installations/:id/token — bootstrap: a device presents its long-lived
 // API key (x-api-key) and receives a short-lived, installation-scoped JWT.
-router.post('/:id/token', deviceAuth, async (req, res) => {
-  const token = jwt.sign(
-    { installationId: req.params.id, scope: 'installation-write' },
-    process.env.JWT_SECRET,
-    { expiresIn: '1h' } // short-lived access token; the API key stays the long-lived secret
-  );
-  res.json({ token, tokenType: 'Bearer', expiresIn: 3600, scope: 'installation-write' });
+router.post('/:id/token', validateIdParam, deviceAuth, async (req, res) => {
+  try {
+    // short-lived access token; the API key stays the long-lived secret
+    const token = signDeviceToken(req.params.id);
+    res.json({ token, tokenType: 'Bearer', expiresIn: 3600, scope: DEVICE_SCOPE });
+  } catch (err) {
+    sendError(res, err, 'TOKEN_FAILED', 'Could not issue token');
+  }
 });
 
 // POST /installations — provision a new solar installation (national-only).
-router.post('/', userAuth, requireNational, async (req, res) => {
+router.post('/', userAuth, requireNational, validateCreateInstallation, async (req, res) => {
   try {
-    const { meterId, capacityKw, latitude, longitude, substation } = req.body;
-
-    if (!meterId || capacityKw === undefined || latitude === undefined ||
-        longitude === undefined || !substation) {
-      return res.status(400).json(
-        errorBody('MISSING_FIELDS', 'meterId, capacityKw, latitude, longitude and substation are required')
-      );
-    }
+    const { meterId, capacityKw, latitude, longitude, substation } = req.valid.body;
 
     // the substation must exist, so we never orphan an installation
     const sub = await GridSubstation.findById(substation);
@@ -154,19 +151,18 @@ router.post('/', userAuth, requireNational, async (req, res) => {
 });
 
 // PUT /installations/:id — fully replace an installation's editable fields (national-only, idempotent)
-router.put('/:id', userAuth, requireNational, async (req, res) => {
+router.put('/:id', userAuth, requireNational, validateReplaceInstallation, async (req, res) => {
   try {
-    const { capacityKw, latitude, longitude, substation } = req.body;
-
-    if (capacityKw === undefined || latitude === undefined || longitude === undefined || !substation) {
-      return res.status(400).json(
-        errorBody('MISSING_FIELDS', 'capacityKw, latitude, longitude and substation are required')
-      );
-    }
+    const { capacityKw, latitude, longitude, substation } = req.valid.body;
 
     const existing = await SolarInstallation.findById(req.params.id);
     if (!existing) {
       return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
+    }
+
+    // same rule as provisioning: never point an installation at a substation that doesn't exist
+    if (!(await GridSubstation.exists({ _id: substation }))) {
+      return res.status(400).json(errorBody('INVALID_SUBSTATION', 'substation does not exist'));
     }
 
     // optimistic concurrency: only proceed when the resource has NOT changed since the client fetched it
@@ -196,7 +192,7 @@ router.put('/:id', userAuth, requireNational, async (req, res) => {
 });
 
 // DELETE /installations/:id — remove an installation (national-only)
-router.delete('/:id', userAuth, requireNational, async (req, res) => {
+router.delete('/:id', userAuth, requireNational, validateIdParam, async (req, res) => {
   try {
     const deleted = await SolarInstallation.findByIdAndDelete(req.params.id);
     if (!deleted) {

@@ -4,10 +4,11 @@ const { District, GridSubstation, SolarInstallation, GenerationReading } = requi
 const { errorBody, sendError } = require('../utils/errors');
 const userAuth = require('../middleware/userAuth');
 const { districtInScope } = require('../middleware/scopeByJurisdiction');
+const { validateIdParam } = require('../validation/schemas');
 
 // GET /districts/:id/generation-summary — processing resource:
 // current total power + today's total energy, aggregated across every installation in the district
-router.get('/:id/generation-summary', userAuth, async (req, res) => {
+router.get('/:id/generation-summary', userAuth, validateIdParam, async (req, res) => {
   try {
     const district = await District.findById(req.params.id);
     if (!district) {

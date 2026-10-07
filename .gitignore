@@ -143,5 +143,6 @@ vite.config.ts.timestamp-*
 .vite/
 
 test-api.js
+test
 
 seed-credentials.json

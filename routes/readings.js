@@ -5,6 +5,9 @@ const deviceJwtAuth = require('../middleware/deviceJwtAuth');
 const userAuth = require('../middleware/userAuth');
 const { installationScopeFilter } = require('../middleware/scopeByJurisdiction');
 const { errorBody, sendError } = require('../utils/errors');
+const {
+  validateReadingParams, validateListReadings, validateCreateReading,
+} = require('../validation/schemas');
 
 // shared jurisdiction gate: the installation in the URL must be inside the user's scope
 async function assertInstallationInScope(req, res) {
@@ -23,23 +26,20 @@ async function assertInstallationInScope(req, res) {
 }
 
 // GET /installations/:id/readings — paginated, filterable, sortable history
-router.get('/', userAuth, async (req, res) => {
+router.get('/', userAuth, validateListReadings, async (req, res) => {
   try {
     if (!(await assertInstallationInScope(req, res))) return;
 
+    const { page, limit, from, to, order } = req.valid.query;
     const filter = { installation: req.params.id };
 
-    if (req.query.from || req.query.to) {
+    if (from || to) {
       filter.timestamp = {};
-      if (req.query.from) filter.timestamp.$gte = new Date(req.query.from);
-      if (req.query.to) filter.timestamp.$lte = new Date(req.query.to);
+      if (from) filter.timestamp.$gte = from;
+      if (to) filter.timestamp.$lte = to;
     }
 
-    const sortDir = req.query.order === 'asc' ? 1 : -1;
-    const sort = { timestamp: sortDir };
-
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+    const sort = { timestamp: order === 'asc' ? 1 : -1 };
     const skip = (page - 1) * limit;
 
     const [readings, total] = await Promise.all([
@@ -49,6 +49,15 @@ router.get('/', userAuth, async (req, res) => {
 
     const totalPages = Math.ceil(total / limit);
 
+    // page links keep the caller's filters, so following "next" doesn't silently drop them
+    const pageLink = (p) => {
+      const params = new URLSearchParams({ page: p, limit });
+      if (req.query.from) params.set('from', req.query.from);
+      if (req.query.to) params.set('to', req.query.to);
+      if (req.query.order) params.set('order', req.query.order);
+      return `${req.baseUrl}?${params}`;
+    };
+
     res.json({
       data: readings,
       pagination: {
@@ -56,8 +65,8 @@ router.get('/', userAuth, async (req, res) => {
         limit,
         total,
         totalPages,
-        nextPage: page < totalPages ? `${req.baseUrl}?page=${page + 1}&limit=${limit}` : null,
-        prevPage: page > 1 ? `${req.baseUrl}?page=${page - 1}&limit=${limit}` : null,
+        nextPage: page < totalPages ? pageLink(page + 1) : null,
+        prevPage: page > 1 ? pageLink(page - 1) : null,
       },
     });
   } catch (err) {
@@ -66,7 +75,7 @@ router.get('/', userAuth, async (req, res) => {
 });
 
 // GET /installations/:id/readings/:readingId — a single reading (atomic resource)
-router.get('/:readingId', userAuth, async (req, res) => {
+router.get('/:readingId', userAuth, validateReadingParams, async (req, res) => {
   try {
     if (!(await assertInstallationInScope(req, res))) return;
 
@@ -83,20 +92,20 @@ router.get('/:readingId', userAuth, async (req, res) => {
   }
 });
 
-// POST /installations/:id/readings — a device pushes one new reading (device-authed, unchanged)
-router.post('/', deviceJwtAuth, async (req, res) => {
+// POST /installations/:id/readings — a device pushes one new reading.
+// Order matters: authenticate first (device token only), then validate the payload.
+router.post('/', deviceJwtAuth, validateCreateReading, async (req, res) => {
   try {
-    const { timestamp, powerKw, energyKwh, voltage } = req.body;
-
-    if (powerKw === undefined || energyKwh === undefined || voltage === undefined) {
-      return res.status(400).json(
-        errorBody('MISSING_FIELDS', 'powerKw, energyKwh and voltage are required')
-      );
+    // a still-valid token must not keep writing readings for an installation that has since been deleted
+    if (!(await SolarInstallation.exists({ _id: req.params.id }))) {
+      return res.status(404).json(errorBody('NOT_FOUND', 'Installation not found'));
     }
+
+    const { timestamp, powerKw, energyKwh, voltage } = req.valid.body;
 
     const reading = await GenerationReading.create({
       installation: req.params.id,
-      timestamp: timestamp ? new Date(timestamp) : new Date(),
+      timestamp: timestamp || new Date(),
       powerKw,
       energyKwh,
       voltage,

@@ -1,27 +1,16 @@
-const jwt = require('jsonwebtoken');
 const { errorBody } = require('../utils/errors');
+const { AUDIENCE, DEVICE_SCOPE } = require('../utils/tokens');
+const verifyBearer = require('./verifyBearer');
 
-// Verifies a device's JWT bearer token for the write path.
-// The token must (a) be a valid, unexpired JWT, (b) carry the
-// 'installation-write' scope, and (c) be bound to the SAME installation
-// named in the URL — i.e. per-installation authentication.
+// Protects the WRITE path. The token must (a) be a valid, unexpired DEVICE token
+// (user tokens are rejected with 403), (b) carry the 'installation-write' scope, and
+// (c) be bound to the SAME installation named in the URL — per-installation authentication.
 function deviceJwtAuth(req, res, next) {
-  const header = req.header('Authorization'); // expects "Bearer <token>"
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json(errorBody('NO_TOKEN', 'Missing or malformed bearer token'));
-  }
-
-  const token = header.split(' ')[1];
-
-  let payload;
-  try {
-    payload = jwt.verify(token, process.env.JWT_SECRET); // throws if faked or expired
-  } catch (err) {
-    return res.status(401).json(errorBody('BAD_TOKEN', 'Invalid or expired token'));
-  }
+  const payload = verifyBearer(req, res, AUDIENCE.DEVICE);
+  if (!payload) return;
 
   // scope check: only tokens minted for writing readings may pass
-  if (payload.scope !== 'installation-write') {
+  if (payload.scope !== DEVICE_SCOPE) {
     return res.status(403).json(errorBody('WRONG_SCOPE', 'Token lacks installation-write scope'));
   }
 
