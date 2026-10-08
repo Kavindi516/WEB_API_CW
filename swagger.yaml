@@ -29,6 +29,8 @@ paths:
     get:
       tags: [Hierarchy]
       summary: List all provinces
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: Array of provinces
@@ -38,6 +40,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Province'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '406':
           $ref: '#/components/responses/NotAcceptable'
 
@@ -45,6 +49,8 @@ paths:
     get:
       tags: [Hierarchy]
       summary: Get a single province (atomic resource)
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
@@ -54,6 +60,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Province'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -61,6 +69,8 @@ paths:
     get:
       tags: [Hierarchy]
       summary: List districts in a province (scoped collection)
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
@@ -72,6 +82,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/District'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -79,6 +91,8 @@ paths:
     get:
       tags: [Substations]
       summary: List all substations, with district and province attached
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: Array of substations
@@ -88,11 +102,15 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Substation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /substations/{id}:
     get:
       tags: [Substations]
       summary: Get a single substation (atomic resource)
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
@@ -102,13 +120,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Substation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 
   /substations/{id}/installations:
     get:
       tags: [Substations]
-      summary: List installations connected to this substation
+      summary: List installations connected to this substation (scoped to the logged-in user's jurisdiction)
+      description: >
+        Returns only the installations at this substation that fall inside the
+        caller's jurisdiction. A national user sees all of them; a provincial or
+        district user sees only those within their own province or district
+        (an empty array if the substation is outside it).
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
@@ -120,6 +147,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/InstallationBasic'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -145,6 +174,8 @@ paths:
     get:
       tags: [Hierarchy]
       summary: Get a single district (atomic resource)
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
@@ -154,6 +185,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DistrictDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /districts/{id}/substations:
+    get:
+      tags: [Hierarchy]
+      summary: List substations in a district (scoped collection)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Array of substations in this district
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SubstationBasic'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -671,6 +728,15 @@ components:
                 _id: { type: string }
                 name: { type: string }
                 code: { type: string }
+
+    SubstationBasic:
+      type: object
+      description: Shape returned by GET /districts/{id}/substations — district is just an ObjectId reference (already known from the URL)
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        code: { type: string }
+        district: { type: string, description: "ObjectId reference to this district" }
 
     Installation:
       type: object

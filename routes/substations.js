@@ -1,11 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { GridSubstation, SolarInstallation } = require('../models');
+const userAuth = require('../middleware/userAuth');
+const { installationScopeFilter } = require('../middleware/scopeByJurisdiction');
 const { errorBody, sendError } = require('../utils/errors');
 const { validateIdParam } = require('../validation/schemas');
 
 // GET /substations — list all, with district (and that district's province) attached
-router.get('/', async (req, res) => {
+router.get('/', userAuth, async (req, res) => {
   try {
     const substations = await GridSubstation.find()
       .populate({
@@ -21,7 +23,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /substations/:id — a single substation (atomic resource)
-router.get('/:id', validateIdParam, async (req, res) => {
+router.get('/:id', userAuth, validateIdParam, async (req, res) => {
   try {
     const substation = await GridSubstation.findById(req.params.id)
       .populate({
@@ -39,13 +41,14 @@ router.get('/:id', validateIdParam, async (req, res) => {
 });
 
 // GET /substations/:id/installations — only installations at this substation
-router.get('/:id/installations', validateIdParam, async (req, res) => {
+router.get('/:id/installations', userAuth, validateIdParam, async (req, res) => {
   try {
     const substation = await GridSubstation.findById(req.params.id);
     if (!substation) {
       return res.status(404).json(errorBody('NOT_FOUND', 'Substation not found'));
     }
-    const installations = await SolarInstallation.find({ substation: req.params.id })
+    const scope = await installationScopeFilter(req.user);
+    const installations = await SolarInstallation.find({ $and: [{ substation: req.params.id }, scope] })
       .select('-apiKeyHash')
       .sort({ meterId: 1 });
     res.json(installations);

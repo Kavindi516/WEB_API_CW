@@ -27,7 +27,7 @@ router.get('/', userAuth, async (req, res) => {
 });
 
 // GET /districts/:id — a single district (atomic resource)
-router.get('/:id', validateIdParam, async (req, res) => {
+router.get('/:id', userAuth, validateIdParam, async (req, res) => {
   try {
     const district = await District.findById(req.params.id).populate('province', 'name code');
     if (!district) {
@@ -40,7 +40,7 @@ router.get('/:id', validateIdParam, async (req, res) => {
 });
 
 // GET /districts/:id/substations — only substations in this district
-router.get('/:id/substations', validateIdParam, async (req, res) => {
+router.get('/:id/substations', userAuth, validateIdParam, async (req, res) => {
   try {
     const district = await District.findById(req.params.id);
     if (!district) {
